@@ -1,0 +1,35 @@
+<html>
+
+
+  <head>
+    <link rel='stylesheet' href='../stylesheets/style.css' />
+
+  </head>
+
+  <body>
+    <div class="container">
+      <h1>MarleyCam</h1>
+
+      <div id="streams">
+        <div id="publisherContainer"></div>
+        <div id="subscriberContainer"></div>
+      </div>
+
+      <div id="controls">
+        <div id="notificationContainer"></div>
+      </div>
+
+    </div>
+
+    <script src="./socket.io/socket.io.js"></script>
+    <script src="http://staging.tokbox.com/v0.91/js/TB.min.js"></script>
+    <script type="text/javascript">
+      var config = {};
+      config.address = '<%= address %>';
+      config.port = '<%= port %>';
+    </script>
+    <script src="./javascripts/marley.js"></script>
+
+  </body>
+
+</html>

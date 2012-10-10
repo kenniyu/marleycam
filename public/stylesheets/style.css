@@ -1,0 +1,30 @@
+body {
+  padding: 20px;
+  font: 13px "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background: #000;
+  color: #fff;
+}
+
+a {
+  color: #00B7FF;
+}
+
+.container {
+  margin: auto;
+  width: 800px;
+  height: 600px;
+  text-align: center;
+}
+
+.container #streams {
+  margin: auto;
+  width: 640px;
+  height: 480px;
+}
+
+.container #controls {
+  padding: 10px 0;
+}
+
+.container .aside {
+}
