@@ -7,19 +7,48 @@
   </head>
 
   <body>
+    <h1>MarleyCam</h1>
     <div class="container">
-      <h1>MarleyCam</h1>
+      <div class="content-main">
 
-      <div id="streams">
-        <div id="publisherContainer"></div>
-        <div id="subscriberContainer"></div>
+        <div id="streams">
+          <div id="publisherContainer"></div>
+          <div id="subscriberContainer"></div>
+        </div>
+
+      </div>
+
+      <div class="content-aside">
+
+        <div class="users-wrapper">
+          <h2>Marley Lovers</h2>
+          <div class="users">
+            <ul class="users-list">
+
+            </ul>
+          </div>
+        </div>
+
+        <div class="chat-wrapper">
+          <h2>Chat</h2>
+          <div class="chat-messages">
+            <ul class="messages-list">
+
+            </ul>
+          </div>
+          <div class="chat-bar">
+            <input type="text" placeholder="send a message"/>
+          </div>
+        </div>
       </div>
 
       <div id="controls">
         <div id="notificationContainer"></div>
       </div>
-
     </div>
+
+
+    <script src="/javascripts/jquery.min.js" type=""></script>
 
     <script src="./socket.io/socket.io.js"></script>
     <script src="http://staging.tokbox.com/v0.91/js/TB.min.js"></script>

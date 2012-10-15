@@ -1,69 +1,73 @@
 (function() {
 
-  console.log(config);
-
-  console.log(config.address);
-  console.log(config.port);
-//  var socket = new io.Socket(config.address, {port: config.port, rememberTransport: false});
-  var currentUrl = document.URL;
-  var socket = io.connect(currentUrl);
+  var currentUrl    = document.URL,
+      socket        = io.connect(currentUrl),
+      VIDEO_WIDTH   = 800,
+      VIDEO_HEIGHT  = 600;
 
   socket.on('connect', function() {
-    var name      = prompt('who are you?'),
+    var username  = '';
         password  = '';
 
-    if (name === 'marley') {
+    username = prompt('your name? (leave blank if you want..)');
+
+    if (username === 'marley') {
       password = prompt('pass?');
     }
 
-    socket.emit('set-user-privilege', { name: name, password: password });
-    socket.emit('message', { event: 'initial' });
+    socket.emit('set-user-info', { username: username, password: password });
+    socket.emit('initial');
   });
 
-  socket.on('message', function (message) {
-    var sessionId;
-    var token;
-    var publisherData;
+  socket.on('receive-chat', function(chatHash) {
+    var chatType = chatHash['chatType'],
+        chatText = chatHash['chatText'],
+        username = chatHash['username'],
+        clientType = chatHash['clientType'];
 
-    switch(message.event) {
-      case 'initial':
-        sessionId = message.data.sessionId;
-        token = message.data.token;
-        publisherData = message.data;
+    if (chatType === 'active') {
+      $('.messages-list').append('<li class="message '+chatType+'"><span class="username '+clientType+'">'+username+'</span>: <span class="chat-text">'+chatText+'</span></li>');
+    } else {
+      $('.messages-list').append('<li class="message '+chatType+'"><span class="chat-text">'+chatText+'</span></li>');
+    }
+    $('.chat-messages').animate({ scrollTop: $('.messages-list').prop('scrollHeight') }, 1);
+  });
 
-        MarleyCam.init(sessionId, token, publisherData);
-      break;
+  socket.on('update-users-list', function(usersHash) {
+    var userData,
+        clientId,
+        username,
+        clientType;
 
-      case 'subscribe':
-        sessionId = message.data.sessionId;
-        token = message.data.token;
-
-        MarleyCam.subscribe(sessionId, token);
-      break;
-
-      case 'wait':
-        MarleyCam.wait();
-      break;
+    $('.users-list').empty();
+    for (clientId in usersHash) {
+      userData    = usersHash[clientId];
+      username    = userData['username'];
+      clientType  = userData['clientType'];
+      $('.users-list').append('<li class="username '+clientType+'" data-client-id="'+clientId+'">'+username+'</li>');
     }
   });
 
+  socket.on('initial', function(data) {
+    var sessionId       = data.sessionId,
+        token           = data.token,
+        publisherData   = data;
+
+    MarleyCam.init(sessionId, token, publisherData);
+  });
+
+  socket.on('subscribe', function(data) {
+    var sessionId       = data.sessionId,
+        token           = data.token;
+
+    MarleyCam.subscribe(sessionId, token);
+  });
+
+  socket.on('wait', function() {
+    MarleyCam.wait();
+  });
+
 //  socket.connect();
-
-  var SocketProxy = function() {
-
-    var findPartner = function(mySessionId) {
-      socket.send({
-        event: 'next',
-        data: {
-          sessionId: mySessionId
-        }
-      });
-    };
-
-    return {
-      findPartner: findPartner
-    };
-  }();
 
   var MarleyCam = function() {
     var apiKey = 20744941;
@@ -79,14 +83,12 @@
     TB.setLogLevel(TB.DEBUG);
 
     var init = function(sessionId, token, publisherData) {
-      console.log('my session id = '+sessionId);
       ele.publisherContainer = document.getElementById('publisherContainer');
       ele.subscriberContainer = document.getElementById('subscriberContainer');
       ele.notificationContainer = document.getElementById('notificationContainer');
 
       ele.notificationContainer.innerHTML = "Connecting...";
 
-      console.log('initing with sessionId = '+sessionId);
 
       mySession = TB.initSession(sessionId);
       mySession.addEventListener( 'sessionConnected', sessionConnectedHandler);
@@ -102,7 +104,7 @@
         div.setAttribute('id', 'publisher');
         ele.publisherContainer.appendChild(div);
 
-        var publisherProps = { 'width': 640, 'height': 480 };
+        var publisherProps = { 'width': VIDEO_WIDTH, 'height': VIDEO_HEIGHT };
 
         var publisher = mySession.publish(div.id, publisherProps);
         publisher.addEventListener( 'accessAllowed', accessAllowedHandler);
@@ -111,12 +113,9 @@
 
       function accessAllowedHandler(event) {
         // whoever just enabled their webcam...
-        SocketProxy.findPartner( mySession.sessionId);
         ele.notificationContainer.innerHTML = "You're live!";
         // tell server to alert all subscribers to subscribe
-        console.log(publisherData);
         socket.emit('set-publisher', publisherData);
-
       };
 
       function connectionCreatedHandler(event) {
@@ -124,7 +123,6 @@
       };
 
       function connectionDestroyedHandler(event) {
-        console.log('connection destroyed');
         partnerConnection = null;
       }
     };
@@ -147,7 +145,7 @@
 
       function sessionConnectedHandler(event) {
         var div = document.createElement('div'),
-            subscriberProps = { 'width': 640, 'height': 480 };
+            subscriberProps = { 'width': VIDEO_WIDTH, 'height': VIDEO_HEIGHT };
         div.setAttribute('id', 'subscriber');
         ele.subscriberContainer.appendChild( div);
         partnerSession.subscribe( event.streams[0], div.id, subscriberProps);
@@ -158,7 +156,6 @@
         partnerSession.removeEventListener( 'sessionDisconnected', sessionDisconnectedHandler);
         partnerSession.removeEventListener( 'streamDestroyed', streamDestroyedHandler);
 
-        SocketProxy.findPartner( mySession.sessionId);
         partnerSession = null;
       }
 
@@ -184,5 +181,17 @@
     };
 
   }();
+
+  $().ready(function() {
+    $('.chat-bar input').live('keypress', function(e) {
+      var keyCode = e.keyCode,
+          message = $(this).val();
+
+      if (keyCode === 13 && message != '') {
+        socket.emit('submit-chat', message);
+        $(this).val('');
+      }
+    });
+  });
 
 })();

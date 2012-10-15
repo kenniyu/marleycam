@@ -53,175 +53,133 @@ var soloUsers = [];
 var viewers = [];
 var publisher;
 var subscribers = [];
+var usersHash = {};
+var anonCounter = 1;
 
 io.sockets.on('connection', function(client) {
-  client.on('set-user-privilege', function(authdata) {
-    var name = authdata['name'],
-        password = authdata['password'];
 
-    if (name === 'marley' && password === '0417') {
+  client.on('disconnect', function () {
+    var clientId = client['id'];
+    delete usersHash[clientId];
+    if (client['store']['data']['clientType'] === 'publisher') {
+      publisher = undefined;
+    }
+    io.sockets.emit('update-users-list', usersHash);
+  });
+
+  client.on('set-user-info', function(authdata) {
+    var username      = encodeHTML(authdata['username']),
+        password      = authdata['password'],
+        tempUserData  = {};
+
+    if (username === 'marley' && password === '0417') {
       // we are marley, set clientType to publisher
       client.set('clientType', 'publisher');
     } else {
+      if (username.trim() === '') {
+        username = 'anon'+anonCounter;
+        anonCounter += 1;
+      }
       // set auth to subscriber
       client.set('clientType', 'subscriber');
     }
+    client.set('username', username);
+
+    tempUserData = {
+      id: client['id'],
+      username: client['store']['data']['username'],
+      clientType: client['store']['data']['clientType']
+    };
+    usersHash[client['id']] = tempUserData;
+    io.sockets.emit('update-users-list', usersHash);
   });
 
   client.on('set-publisher', function(publisherData) {
-    var tempSubscriber,
-        numSubscribers = subscribers.length;
+    var tempClient;
 
     publisher = publisherData;
 
     // if there were any subscribers, subscribe now
-    console.log('making all subscribers subscribe');
-    console.log(subscribers);
-    for (var i = 0; i < numSubscribers; i++) {
-      tempSubscriber = subscribers[i];
-      tempSubscriber.emit('message', {
-        event: 'subscribe',
-        data: publisherData
-      });
+    for (var clientId in usersHash) {
+      tempClient = usersHash[clientId];
+      if (tempClient['clientType'] === 'subscriber') {
+        io.sockets.socket(clientId).emit('subscribe', publisherData);
+      }
     }
+
   });
 
-  client.on('message', function(message) {
-    // Parse the incoming event
-    switch (message.event) {
-      // User requested initialization data
-      case 'initial':
-        // Create an OpenTok session for each user
-        var data,
-            clientType = client['store']['data']['clientType'];
+  client.on('submit-chat', function(message) {
+    var chatType,
+        chatText,
+        username = client['store']['data']['username'],
+        clientType = client['store']['data']['clientType'],
+        messageHash,
+        emotedText;
 
-        ot.createSession('localhost', {}, function(session) {
-          if (clientType === 'publisher') {
-            // i'm marley, let me publish!
-            data = {
-              sessionId: session,
-              token: ot.generateToken({
-                sessionId: session,
-                role: opentok.RoleConstants.MODERATOR
-              })
-            };
+    if (message.indexOf('/me ') === 0) {
+      emotedText = message.substring(3);
+      chatType = 'passive';
+      chatText = username + encodeHTML(emotedText);
+    } else {
+      chatType = 'active';
+      chatText = encodeHTML(message);
+    }
 
-            client.emit('message', {
-              event: 'initial',
-              data: data
-            });
+    messageHash = {
+      chatType: chatType,
+      chatText: chatText,
+      username: username,
+      clientType: clientType
+    }
 
-          } else {
-            // this guy is not marley, sub to marley
-            subscribers.push(client);
-            if (publisher === undefined) {
-              client.emit('message', {
-                event: 'wait'
-              });
-            } else {
-              data = {
-                sessionId: publisher['sessionId'],
-                token: ot.generateToken({
-                  sessionId: publisher['sessionId'],
-                  role: opentok.RoleConstants.SUBSCRIBER
-                })
-              };
-              client.emit('message', {
-                event: 'subscribe',
-                data: data
-              });
-            }
-          }
+    io.sockets.emit('receive-chat', messageHash);
+  });
 
-        });
-        break;
+  client.on('initial', function() {
+    // Create an OpenTok session for each user
+    var data,
+        clientType = client['store']['data']['clientType'];
 
-      // User requested next partner
-      case 'next':
-        // Create a "user" data object for me
-        var me = {
-          sessionId: message.data.sessionId,
-          clientId: client.sessionId
+    ot.createSession('localhost', {}, function(session) {
+      if (clientType === 'publisher') {
+        // i'm marley, let me publish!
+        data = {
+          sessionId: session,
+          token: ot.generateToken({
+            sessionId: session,
+            role: opentok.RoleConstants.MODERATOR
+          })
         };
 
-        var partner;
-        var partnerClient;
-        // Look for a user to partner with in the list of solo users
-        for (var i = 0; i < soloUsers.length; i++) {
-          var tmpUser = soloUsers[i];
-
-          // Make sure our last partner is not our new partner
-          if (client.partner != tmpUser) {
-          // Get the socket client for this user
-            partnerClient = socket.clientsIndex[tmpUser.clientId];
-
-            // Remove the partner we found from the list of solo users
-            soloUsers.splice(i, 1);
-
-            // If the user we found exists...
-            if (partnerClient) {
-              // Set as our partner and quit the loop today
-              partner = tmpUser;
-              break;
-            }
-          }
-        }
-
-        // If we found a partner...
-        if (partner) {
-
-          // Tell myself to subscribe to my partner
-          client.send({
-            event: 'subscribe',
-            data: {
-              sessionId: partner.sessionId,
-              token: ot.generateToken({
-                sessionId: partner.sessionId,
-                role: opentok.Roles.SUBSCRIBER
-              })
-            }
-          });
-
-          // Tell my partner to subscribe to me
-          partnerClient.send({
-            event: 'subscribe',
-            data: {
-              sessionId: me.sessionId,
-              token: ot.generateToken({
-                sessionId: me.sessionId,
-                role: opentok.Roles.SUBSCRIBER
-              })
-            }
-          });
-
-          // Mark that my new partner and me are partners
-          client.partner = partner;
-          partnerClient.partner = me;
-
-          // Mark that we are not in the list of solo users anymore
-          client.inList = false;
-          partnerClient.inList = false;
-
+        client.emit('initial', data);
+      } else {
+        // this guy is not marley, sub to marley
+        subscribers.push(client);
+        if (publisher === undefined) {
+          client.emit('wait');
         } else {
-
-          // Delete that I had a partner if I had one
-          if (client.partner) {
-            delete client.partner;
-          }
-
-          // Add myself to list of solo users if I'm not in the list
-          if (!client.inList) {
-            client.inList = true;
-            soloUsers.push(me);
-          }
-
-          // Tell myself that there is nobody to chat with right now
-          client.send({
-            event: 'empty'
-          });
+          data = {
+            sessionId: publisher['sessionId'],
+            token: ot.generateToken({
+              sessionId: publisher['sessionId'],
+              role: opentok.RoleConstants.SUBSCRIBER
+            })
+          };
+          client.emit('subscribe', data);
         }
-
-        break;
       }
+    });
   });
+
 });
+
+
+// helper functions
+function encodeHTML(s) {
+  if (s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  } else {
+    return '';
+  }
+}
